@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '../auth/auth';
 import { apiFetch } from '../api/api';
 import { Button, Modal, Input, DatePicker, Select, List, Space, message, Card, Typography, Form } from 'antd';
@@ -8,13 +8,14 @@ const { TextArea } = Input;
 const { Option } = Select;
 const { Text } = Typography;
 
-export default function TeacherDashboard() {
+const TeacherDashboard = () => {
     const { token, user, logout } = useAuth();
     const [assignments, setAssignments] = useState([]);
     const [statusFilter, setStatusFilter] = useState('');
     const [page, setPage] = useState(1);
 
     const [isModalVisible, setIsModalVisible] = useState(false);
+    const [isModalOpen, setIsModalOpen] = useState(false);
     const [title, setTitle] = useState('');
     const [description, setDescription] = useState('');
     const [dueDate, setDueDate] = useState(null);
@@ -23,17 +24,20 @@ export default function TeacherDashboard() {
     const [currentSubmissions, setCurrentSubmissions] = useState([]);
     const [currentAssignmentTitle, setCurrentAssignmentTitle] = useState('');
 
-    const [loading, setLoading] = useState(false);
+    const load = useCallback(async () => {
+        const q = statusFilter
+            ? `?status=${statusFilter}&page=${page}&limit=20`
+            : `?page=${page}&limit=20`;
 
-    async function load() {
-        const q = statusFilter ? `?status=${statusFilter}&page=${page}&limit=20` : `?page=${page}&limit=20`;
         const res = await apiFetch(token, '/api/assignments' + q);
         setAssignments(res.items || []);
-    }
+    }, [statusFilter, page, token]);
 
-    useEffect(() => { load(); }, [statusFilter, page]);
+    useEffect(() => {
+        load();
+    }, [load]);
 
-    async function createAssign() {
+    const createAssign = async () => {
         if (!title || !dueDate) {
             message.error('Title and Due Date are required');
             return;
@@ -58,7 +62,7 @@ export default function TeacherDashboard() {
     async function complete(id) { await apiFetch(token, `/api/assignments/${id}/complete`, { method: 'POST' }); load(); }
     async function remove(id) { await apiFetch(token, `/api/assignments/${id}`, { method: 'DELETE' }); load(); }
 
-    async function viewSubmissions(id, title) {
+    const viewSubmissions = async (id, title) => {
         try {
             const res = await apiFetch(token, `/api/assignments/${id}/submissions`);
             setCurrentSubmissions(res || []);
@@ -69,7 +73,7 @@ export default function TeacherDashboard() {
         }
     }
 
-    async function markReviewed(assignmentId, studentId, note) {
+    const markReviewed = async (assignmentId, studentId, note) => {
         try {
             await apiFetch(token, `/api/assignments/${assignmentId}/submissions/${studentId}/review`, {
                 method: 'POST',
@@ -86,12 +90,26 @@ export default function TeacherDashboard() {
         }
     }
 
-
     return (
         <div style={{ padding: 20 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
                 <h2>Teacher Dashboard - {user?.name}</h2>
-                <Button type="primary" danger onClick={logout}>Logout</Button>
+                <Button type="primary" danger onClick={() => setIsModalOpen(true)}>Logout</Button>
+                <Modal
+                    title="Confirm Logout"
+                    open={isModalOpen}
+                    onOk={() => {
+                        logout();
+                        message.success('Logged out successfully');
+                        setIsModalOpen(false);
+                    }}
+                    onCancel={() => setIsModalOpen(false)}
+                    okText="Logout"
+                    cancelText="Cancel"
+                    okButtonProps={{ danger: true }}
+                >
+                    <p>Are you sure you want to logout?</p>
+                </Modal>
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 20 }}>
@@ -191,3 +209,5 @@ export default function TeacherDashboard() {
         </div>
     );
 }
+
+export default TeacherDashboard;

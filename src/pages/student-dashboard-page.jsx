@@ -1,33 +1,37 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '../auth/auth';
 import { apiFetch } from '../api/api';
-import { Button, List, Card, Typography, Space, Input, message } from 'antd';
+import { Button, List, Card, Typography, Space, Input, message, Modal } from 'antd';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
 
-export default function StudentDashboard() {
+ const StudentDashboard = () => {
     const { token, user, logout } = useAuth();
     const [assignments, setAssignments] = useState([]);
     const [selected, setSelected] = useState(null);
     const [answer, setAnswer] = useState('');
     const [mySubmission, setMySubmission] = useState(null);
     const [loading, setLoading] = useState(false);
+    const [isModalOpen, setIsModalOpen] = useState(false);
 
-    async function load() {
+    const load = useCallback(async () => {
         const res = await apiFetch(token, '/api/assignments/published/list?page=1&limit=50');
         setAssignments(res.items || []);
-    }
+    }, [token]);
 
-    useEffect(() => { load(); }, []);
+    useEffect(() => {
+        load();
+    }, [load]);
 
-    async function fetchDetail(id) {
+
+    const fetchDetail = async (id) => {
         const res = await apiFetch(token, `/api/assignments/${id}`);
         setSelected(res.assignment);
         setMySubmission(res.mySubmission || null);
     }
 
-    async function submit(id) {
+    const submit = async (id) => {
         if (!answer.trim()) {
             message.error('Answer cannot be empty');
             return;
@@ -49,7 +53,22 @@ export default function StudentDashboard() {
         <div style={{ padding: 20 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
                 <Title level={2}>Student Dashboard - {user?.name}</Title>
-                <Button type="primary" danger onClick={logout}>Logout</Button>
+                <Button type="primary" danger onClick={() => setIsModalOpen(true)}>Logout</Button>
+                <Modal
+                    title="Confirm Logout"
+                    open={isModalOpen}
+                    onOk={() => {
+                        logout();
+                        message.success('Logged out successfully');
+                        setIsModalOpen(false);
+                    }}
+                    onCancel={() => setIsModalOpen(false)}
+                    okText="Logout"
+                    cancelText="Cancel"
+                    okButtonProps={{ danger: true }}
+                >
+                    <p>Are you sure you want to logout?</p>
+                </Modal>
             </div>
 
             <Title level={3}>Published Assignments</Title>
@@ -99,3 +118,5 @@ export default function StudentDashboard() {
         </div>
     );
 }
+
+export default StudentDashboard;
