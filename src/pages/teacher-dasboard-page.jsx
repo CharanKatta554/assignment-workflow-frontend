@@ -14,14 +14,15 @@ import {
     Typography,
     Form,
     Dropdown,
-    Menu
+    Menu,
+    Avatar
 } from 'antd';
-import { DownOutlined } from '@ant-design/icons';
+import { DownOutlined, UserOutlined } from '@ant-design/icons';
 import moment from 'moment';
 
 const { TextArea } = Input;
 const { Option } = Select;
-const { Text } = Typography;
+const { Text, Title } = Typography;
 
 const TeacherDashboard = () => {
     const { token, user, logout } = useAuth();
@@ -30,7 +31,6 @@ const TeacherDashboard = () => {
     const [page, setPage] = useState(1);
 
     const [isModalVisible, setIsModalVisible] = useState(false);
-    const [isModalOpen, setIsModalOpen] = useState(false);
     const [editMode, setEditMode] = useState(false);
     const [currentId, setCurrentId] = useState(null);
     const [title, setTitle] = useState('');
@@ -41,96 +41,63 @@ const TeacherDashboard = () => {
     const [currentSubmissions, setCurrentSubmissions] = useState([]);
     const [currentAssignmentTitle, setCurrentAssignmentTitle] = useState('');
 
-    const [detailsModalVisible, setDetailsModalVisible] = useState(false);
     const [selectedAssignment, setSelectedAssignment] = useState(null);
+    const [logoutModalVisible, setLogoutModalVisible] = useState(false);
 
     const load = useCallback(async () => {
         const q = statusFilter
             ? `?status=${statusFilter}&page=${page}&limit=20`
             : `?page=${page}&limit=20`;
-
-        const res = await apiFetch(token, '/api/assignments' + q);
-        setAssignments(res.items || []);
+        try {
+            const res = await apiFetch(token, '/api/assignments' + q);
+            setAssignments(res.items || []);
+        } catch (err) {
+            message.error('Failed to load assignments');
+        }
     }, [statusFilter, page, token]);
 
-    useEffect(() => {
-        load();
-    }, [load]);
+    useEffect(() => { load(); }, [load]);
 
     const openCreateModal = () => {
-        setTitle('');
-        setDescription('');
-        setDueDate(null);
-        setEditMode(false);
-        setCurrentId(null);
-        setIsModalVisible(true);
+        setTitle(''); setDescription(''); setDueDate(null);
+        setEditMode(false); setCurrentId(null); setIsModalVisible(true);
     };
 
     const openEditModal = (assignment) => {
         setTitle(assignment.title);
         setDescription(assignment.description || '');
         setDueDate(moment(assignment.dueDate));
-        setEditMode(true);
-        setCurrentId(assignment.id);
-        setIsModalVisible(true);
+        setEditMode(true); setCurrentId(assignment.id); setIsModalVisible(true);
     };
 
     const saveAssignment = async () => {
-        if (!title || !dueDate) {
-            message.error('Title and Due Date are required');
-            return;
-        }
-
-        if (editMode && currentId) {
-            await apiFetch(token, `/api/assignments/${currentId}`, {
-                method: 'PUT',
-                body: {
-                    title,
-                    description,
-                    dueDate: dueDate.toISOString()
-                }
-            });
-            message.success('Assignment updated!');
-        } else {
-            await apiFetch(token, '/api/assignments', {
-                method: 'POST',
-                body: {
-                    title,
-                    description,
-                    dueDate: dueDate.toISOString()
-                }
-            });
-            message.success('Assignment created!');
-        }
-
-        setTitle('');
-        setDescription('');
-        setDueDate(null);
-        setIsModalVisible(false);
-        load();
-    };
-
-    const publish = async (id) => {
-        await apiFetch(token, `/api/assignments/${id}/publish`, { method: 'POST' });
-        load();
-    }
-    const complete = async (id) => {
-        await apiFetch(token, `/api/assignments/${id}/complete`, { method: 'POST' });
-        load();
-    }
-
-    const remove = async (id) => {
+        if (!title || !dueDate) { message.error('Title and Due Date are required'); return; }
         try {
-            setAssignments(prev => prev.filter(a => a.id !== id));
-            await apiFetch(token, `/api/assignments/${id}`, { method: 'DELETE' });
-            message.success('Assignment deleted');
-            load();
+            if (editMode && currentId) {
+                await apiFetch(token, `/api/assignments/${currentId}`, {
+                    method: 'PUT',
+                    body: { title, description, dueDate: dueDate.toISOString() }
+                });
+                message.success('Assignment updated!');
+            } else {
+                await apiFetch(token, '/api/assignments', {
+                    method: 'POST',
+                    body: { title, description, dueDate: dueDate.toISOString() }
+                });
+                message.success('Assignment created!');
+            }
         } catch (err) {
-            message.error('Failed to delete assignment');
-            load();
+            message.error('Failed to save assignment');
         }
+        setIsModalVisible(false); load();
     };
 
+    const publish = async (id) => { await apiFetch(token, `/api/assignments/${id}/publish`, { method: 'POST' }); load(); };
+    const complete = async (id) => { await apiFetch(token, `/api/assignments/${id}/complete`, { method: 'POST' }); load(); };
+    const remove = async (id) => {
+        try { await apiFetch(token, `/api/assignments/${id}`, { method: 'DELETE' }); message.success('Assignment deleted'); load(); }
+        catch (err) { message.error('Failed to delete assignment'); }
+    };
 
     const viewSubmissions = async (id, title) => {
         try {
@@ -138,9 +105,7 @@ const TeacherDashboard = () => {
             setCurrentSubmissions(res || []);
             setCurrentAssignmentTitle(title);
             setSubmissionsModalVisible(true);
-        } catch (e) {
-            message.error('Failed to fetch submissions');
-        }
+        } catch { message.error('Failed to fetch submissions'); }
     };
 
     const markReviewed = async (assignmentId, studentId, note) => {
@@ -149,53 +114,46 @@ const TeacherDashboard = () => {
                 method: 'POST',
                 body: { reviewNote: note || '' }
             });
-            message.success('Marked as reviewed');
             setCurrentSubmissions(prev =>
-                prev.map(s =>
-                    s.id === studentId ? { ...s, reviewed: true, reviewNote: note } : s
-                )
+                prev.map(s => s.studentId === studentId ? { ...s, reviewed: true, reviewNote: note } : s)
             );
-        } catch (e) {
-            message.error('Failed to mark as reviewed');
-        }
-    }
-
-    const openDetailsModal = (assignment) => {
-        setSelectedAssignment(assignment);
-        setDetailsModalVisible(true);
+            message.success('Marked as reviewed');
+        } catch { message.error('Failed to mark as reviewed'); }
     };
+
+    const openDetailsModal = (assignment) => setSelectedAssignment(assignment);
 
     return (
         <div style={{ padding: 20 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-                <h2>Teacher Dashboard - {user?.name}</h2>
-                <Button type="primary" danger onClick={() => setIsModalOpen(true)}>Logout</Button>
-                <Modal
-                    title="Confirm Logout"
-                    open={isModalOpen}
-                    onOk={() => {
-                        logout();
-                        message.success('Logged out successfully');
-                        setIsModalOpen(false);
-                    }}
-                    onCancel={() => setIsModalOpen(false)}
-                    okText="Logout"
-                    cancelText="Cancel"
-                    okButtonProps={{ danger: true }}
+                <Title level={2}>Teacher Dashboard</Title>
+                <Dropdown
+                    overlay={<Menu items={[{ key: 'logout', label: 'Logout', onClick: () => setLogoutModalVisible(true), danger: true }]} />}
+                    placement="bottomRight"
                 >
-                    <p>Are you sure you want to logout?</p>
-                </Modal>
+                    <div style={{ textAlign: 'center', cursor: 'pointer' }}>
+                        <Avatar size={48} icon={<UserOutlined />} />
+                        <div style={{ marginTop: 5, fontWeight: 500 }}>{user?.name}</div>
+                    </div>
+                </Dropdown>
             </div>
+
+            <Modal
+                title="Confirm Logout"
+                open={logoutModalVisible}
+                onOk={() => { logout(); message.success('Logged out'); setLogoutModalVisible(false); }}
+                onCancel={() => setLogoutModalVisible(false)}
+                okText="Logout"
+                cancelText="Cancel"
+                okButtonProps={{ danger: true }}
+            >
+                <p>Are you sure you want to logout?</p>
+            </Modal>
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 20 }}>
                 <Space>
                     <Button type="primary" onClick={openCreateModal}>Create Assignment</Button>
-                    <Select
-                        value={statusFilter}
-                        onChange={setStatusFilter}
-                        style={{ width: 150 }}
-                        placeholder="Filter Status"
-                    >
+                    <Select value={statusFilter} onChange={setStatusFilter} style={{ width: 150 }} placeholder="Filter Status">
                         <Option value="">All</Option>
                         <Option value="DRAFT">Draft</Option>
                         <Option value="PUBLISHED">Published</Option>
@@ -211,25 +169,25 @@ const TeacherDashboard = () => {
                 onCancel={() => setIsModalVisible(false)}
                 okText={editMode ? "Update" : "Create"}
             >
-                <Input
-                    placeholder="Title"
-                    value={title}
-                    onChange={e => setTitle(e.target.value)}
-                    style={{ marginBottom: 10 }}
-                />
-                <TextArea
-                    placeholder="Description"
-                    value={description}
-                    onChange={e => setDescription(e.target.value)}
-                    rows={4}
-                    style={{ marginBottom: 10 }}
-                />
-                <DatePicker
-                    showTime
-                    style={{ width: '100%' }}
-                    value={dueDate}
-                    onChange={setDueDate}
-                />
+                <Input placeholder="Title" value={title} onChange={e => setTitle(e.target.value)} style={{ marginBottom: 10 }} />
+                <TextArea placeholder="Description" value={description} onChange={e => setDescription(e.target.value)} rows={4} style={{ marginBottom: 10 }} />
+                <DatePicker showTime style={{ width: '100%' }} value={dueDate} onChange={setDueDate} />
+            </Modal>
+
+            <Modal
+                title={`Assignment Details - ${selectedAssignment?.title || ''}`}
+                open={!!selectedAssignment}
+                onCancel={() => setSelectedAssignment(null)}
+                footer={null}
+            >
+                {selectedAssignment && (
+                    <div>
+                        <p><strong>Title:</strong> {selectedAssignment.title}</p>
+                        <p><strong>Description:</strong> {selectedAssignment.description || "No description"}</p>
+                        <p><strong>Status:</strong> {selectedAssignment.status}</p>
+                        <p><strong>Due Date:</strong> {moment(selectedAssignment.dueDate).format('YYYY-MM-DD HH:mm')}</p>
+                    </div>
+                )}
             </Modal>
 
             <Modal
@@ -258,7 +216,7 @@ const TeacherDashboard = () => {
                                     {!s.reviewed && (
                                         <Form
                                             layout="inline"
-                                            onFinish={(values) => markReviewed(s.assignmentId, s.studentId, values.note)}
+                                            onFinish={async (values) => await markReviewed(s.assignmentId, s.studentId, values.note)}
                                         >
                                             <Form.Item name="note">
                                                 <Input placeholder="Review note (optional)" />
@@ -268,29 +226,11 @@ const TeacherDashboard = () => {
                                             </Form.Item>
                                         </Form>
                                     )}
-                                    {s.reviewed && s.reviewNote && (
-                                        <Text type="secondary">Note: {s.reviewNote}</Text>
-                                    )}
+                                    {s.reviewed && s.reviewNote && <Text type="secondary">Note: {s.reviewNote}</Text>}
                                 </Card>
                             </List.Item>
                         )}
                     />
-                )}
-            </Modal>
-
-            <Modal
-                title="Assignment Details"
-                open={detailsModalVisible}
-                onCancel={() => setDetailsModalVisible(false)}
-                footer={null}
-            >
-                {selectedAssignment && (
-                    <div>
-                        <p><strong>Title:</strong> {selectedAssignment.title}</p>
-                        <p><strong>Description:</strong> {selectedAssignment.description || "No description"}</p>
-                        <p><strong>Status:</strong> {selectedAssignment.status}</p>
-                        <p><strong>Due Date:</strong> {moment(selectedAssignment.dueDate).format('YYYY-MM-DD HH:mm')}</p>
-                    </div>
                 )}
             </Modal>
 
@@ -299,7 +239,7 @@ const TeacherDashboard = () => {
                 dataSource={assignments}
                 renderItem={a => (
                     <List.Item
-                        key={a.id}  // important for React re-render
+                        key={a.id}
                         actions={[
                             a.status === 'DRAFT' && (
                                 <Dropdown
@@ -317,35 +257,21 @@ const TeacherDashboard = () => {
                                     }
                                     trigger={['click']}
                                 >
-                                    <Button>
-                                        Actions <DownOutlined />
-                                    </Button>
+                                    <Button>Actions <DownOutlined /></Button>
                                 </Dropdown>
-
                             ),
-                            a.status === 'DRAFT' && (
-                                <Button onClick={() => publish(a.id)} type="primary">Publish</Button>
-                            ),
-                            a.status === 'PUBLISHED' && (
-                                <Button onClick={() => complete(a.id)}>Mark Completed</Button>
-                            ),
-                            a.status === 'PUBLISHED' && (
-                                <Button onClick={() => viewSubmissions(a.id, a.title)}>View Submissions</Button>
-                            )
+                            a.status === 'DRAFT' && <Button onClick={() => publish(a.id)} type="primary">Publish</Button>,
+                            a.status === 'PUBLISHED' && <Button onClick={() => complete(a.id)}>Mark Completed</Button>,
+                            a.status === 'PUBLISHED' && <Button onClick={() => viewSubmissions(a.id, a.title)}>View Submissions</Button>
                         ].filter(Boolean)}
                     >
                         <List.Item.Meta
-                            title={
-                                <a onClick={() => openDetailsModal(a)} style={{ cursor: 'pointer' }}>
-                                    {a.title}
-                                </a>
-                            }
+                            title={<a onClick={() => openDetailsModal(a)} style={{ cursor: 'pointer' }}>{a.title}</a>}
                             description={`Status: ${a.status} | Due: ${moment(a.dueDate).format('YYYY-MM-DD HH:mm')}`}
                         />
                     </List.Item>
                 )}
             />
-
         </div>
     );
 };
