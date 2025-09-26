@@ -1,35 +1,54 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '../auth/auth';
 import { apiFetch } from '../api/api';
-import { Button, List, Card, Typography, Space, Input, message, Modal } from 'antd';
+import { Button, List, Card, Typography, Input, message, Modal, Tabs } from 'antd';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
+const { TabPane } = Tabs;
 
- const StudentDashboard = () => {
+const StudentDashboard = () => {
     const { token, user, logout } = useAuth();
-    const [assignments, setAssignments] = useState([]);
+    const [publishedAssignments, setPublishedAssignments] = useState([]);
+    const [reviewedAssignments, setReviewedAssignments] = useState([]);
     const [selected, setSelected] = useState(null);
     const [answer, setAnswer] = useState('');
     const [mySubmission, setMySubmission] = useState(null);
     const [loading, setLoading] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
 
-    const load = useCallback(async () => {
-        const res = await apiFetch(token, '/api/assignments/published/list?page=1&limit=50');
-        setAssignments(res.items || []);
+    const loadPublished = useCallback(async () => {
+        try {
+            const res = await apiFetch(token, '/api/assignments/published/list?page=1&limit=50');
+            setPublishedAssignments(res.items || []);
+        } catch (err) {
+            message.error('Failed to load published assignments');
+        }
+    }, [token]);
+
+    const loadReviewed = useCallback(async () => {
+        try {
+            const res = await apiFetch(token, '/api/assignments/getReviewedAssignments');
+            setReviewedAssignments(res || []);
+        } catch (err) {
+            message.error('Failed to load reviewed assignments');
+        }
     }, [token]);
 
     useEffect(() => {
-        load();
-    }, [load]);
-
+        loadPublished();
+        loadReviewed();
+    }, [loadPublished, loadReviewed]);
 
     const fetchDetail = async (id) => {
-        const res = await apiFetch(token, `/api/assignments/${id}`);
-        setSelected(res.assignment);
-        setMySubmission(res.mySubmission || null);
-    }
+        try {
+            const res = await apiFetch(token, `/api/assignments/${id}`);
+            setSelected(res.assignment);
+            setMySubmission(res.mySubmission || null);
+        } catch (err) {
+            message.error('Failed to fetch assignment details');
+        }
+    };
 
     const submit = async (id) => {
         if (!answer.trim()) {
@@ -38,16 +57,21 @@ const { TextArea } = Input;
         }
         setLoading(true);
         try {
-            await apiFetch(token, `/api/assignments/${id}/submissions`, { method: 'POST', body: { answer } });
+            await apiFetch(token, `/api/assignments/${id}/submissions`, {
+                method: 'POST',
+                body: { answer }
+            });
             setAnswer('');
-            fetchDetail(id);
+            await fetchDetail(id);
+            await loadPublished();
+            await loadReviewed();
             message.success('Submission successful!');
         } catch (e) {
-            message.error(e.message);
+            message.error(e.message || 'Failed to submit');
         } finally {
             setLoading(false);
         }
-    }
+    };
 
     return (
         <div style={{ padding: 20 }}>
@@ -71,20 +95,45 @@ const { TextArea } = Input;
                 </Modal>
             </div>
 
-            <Title level={3}>Published Assignments</Title>
-            <List
-                bordered
-                dataSource={assignments}
-                renderItem={a => (
-                    <List.Item
-                        actions={[
-                            <Button type="link" onClick={() => fetchDetail(a.id)}>Open</Button>
-                        ]}
-                    >
-                        <Text strong>{a.title}</Text> - <Text type="secondary">Due: {new Date(a.dueDate).toLocaleString()}</Text>
-                    </List.Item>
-                )}
-            />
+            <Tabs defaultActiveKey="1">
+                <TabPane tab="Published Assignments" key="1">
+                    <List
+                        bordered
+                        dataSource={publishedAssignments}
+                        renderItem={a => (
+                            <List.Item actions={[<Button type="link" onClick={() => fetchDetail(a.id)}>Open</Button>]}>
+                                <Text strong>{a.title}</Text> - <Text type="secondary">Due: {new Date(a.dueDate).toLocaleString()}</Text>
+                            </List.Item>
+                        )}
+                    />
+                </TabPane>
+
+                <TabPane tab="Reviewed Assignments" key="2">
+                    {reviewedAssignments.length === 0 ? (
+                        <Text>No reviewed assignments yet</Text>
+                    ) : (
+                        <List
+                            bordered
+                            dataSource={reviewedAssignments}
+                            renderItem={(r) => (
+                                <List.Item>
+                                    <Card style={{ width: '100%' }}>
+                                        <Text strong>{r.assignment.title}</Text>
+                                        <br />
+                                        <Text>{r.assignment.description}</Text>
+                                        <br />
+                                        <Text type="secondary">Due: {new Date(r.assignment.dueDate).toLocaleString()}</Text>
+                                        <br />
+                                        <Text>Reviewed: {r.reviewNote}</Text>
+                                        <br />
+                                        <Text type="secondary">Submitted at: {new Date(r.submittedAt).toLocaleString()}</Text>
+                                    </Card>
+                                </List.Item>
+                            )}
+                        />
+                    )}
+                </TabPane>
+            </Tabs>
 
             {selected && (
                 <Card title={selected.title} style={{ marginTop: 20 }} bordered>
@@ -97,6 +146,18 @@ const { TextArea } = Input;
                             <Text>{mySubmission.answer}</Text>
                             <br />
                             <Text type="secondary">Submitted at: {new Date(mySubmission.submittedAt).toLocaleString()}</Text>
+                            {mySubmission.reviewed && (
+                                <>
+                                    <br />
+                                    <Text type="success">Reviewed</Text>
+                                    {mySubmission.reviewNote && (
+                                        <>
+                                            <br />
+                                            <Text type="secondary">Note: {mySubmission.reviewNote}</Text>
+                                        </>
+                                    )}
+                                </>
+                            )}
                         </Card>
                     ) : (
                         <div style={{ marginTop: 20 }}>
@@ -117,6 +178,6 @@ const { TextArea } = Input;
             )}
         </div>
     );
-}
+};
 
 export default StudentDashboard;
